@@ -10,8 +10,9 @@ app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 bcrypt = Bcrypt(app)
 
-# Initialize Firebase Admin SDK
-cred = credentials.Certificate("/home/indu/mysite/quizziz-2c051-firebase-adminsdk-5mpwp-98c1cc8ce1.json")
+# Load the Firebase credentials
+firebase_credentials_path ="C:\\Users\\HOME\\Desktop\\my_flask_project\\quizziz-2c051-firebase-adminsdk-5mpwp-1a3a7cb7ee.json"
+cred = credentials.Certificate(firebase_credentials_path)
 firebase_admin.initialize_app(cred, {
     'databaseURL': 'https://quizziz-2c051-default-rtdb.firebaseio.com/',
     'storageBucket': 'quizziz-2c051.appspot.com'
@@ -34,14 +35,14 @@ def signup():
         password = request.form.get('password')
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
-        try:
-            # Check if the username already exists
-            users_ref = db.collection('users')
-            query = users_ref.where('username', '==', username).stream()
-            if any(query):
-                flash('Username already exists. Please choose a different one.', 'error')
-                return redirect(url_for('signup'))
+        # Check if the username already exists
+        users_ref = db.collection('users')
+        query = users_ref.where('username', '==', username).stream()
+        if any(query):
+            flash('Username already exists. Please choose a different one.', 'error')
+            return redirect(url_for('signup'))
 
+        try:
             # Store the new user in Firestore
             users_ref.add({
                 'username': username,
@@ -50,7 +51,6 @@ def signup():
             flash('Signup successful! Please log in.', 'success')
             return redirect(url_for('login'))
         except Exception as e:
-            logging.error(f"Error during signup: {e}")
             flash(f'Error occurred: {str(e)}', 'error')
             return redirect(url_for('signup'))
 
@@ -61,34 +61,39 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
+        app.logger.info(f'Received login attempt for username: {username}')
 
-        try:
-            # Retrieve user from Firestore
-            users_ref = db.collection('users')
-            query = users_ref.where('username', '==', username).stream()
-            user = None
-            for doc in query:
-                user = doc.to_dict()
-                break
+        # Retrieve user from Firestore
+        users_ref = db.collection('users')
+        query = users_ref.where('username', '==', username).stream()
+        user = None
+        for doc in query:
+            user = doc.to_dict()
+            break
 
-            if user and bcrypt.check_password_hash(user['password'], password):
+        if user:
+            app.logger.info(f'User found for username: {username}')
+            if bcrypt.check_password_hash(user['password'], password):
                 session['logged_in'] = True
                 session['username'] = username
+                app.logger.info(f'User {username} logged in successfully.')
                 return redirect(url_for('enter'))
             else:
-                flash('Invalid username or password', 'error')
-                return redirect(url_for('login'))
-        except Exception as e:
-            logging.error(f"Error during login: {e}")
-            flash(f'Error occurred: {str(e)}', 'error')
-            return redirect(url_for('login'))
+                app.logger.warning(f'Invalid password for username: {username}')
+        else:
+            app.logger.warning(f'User not found for username: {username}')
+
+        flash('Invalid username or password', 'error')
+        return redirect(url_for('login'))
 
     return render_template('login.html')
 
 @app.route('/enter')
 def enter():
     if not session.get('logged_in'):
+        logging.info("User not logged in, redirecting to login")
         return redirect(url_for('login'))
+    logging.info(f"User {session['username']} entered the page")
     return render_template('enter.html')
 
 @app.route('/create_quiz', methods=['GET', 'POST'])
